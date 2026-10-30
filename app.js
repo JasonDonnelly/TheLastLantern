@@ -1,3 +1,4 @@
+const bundledAudio={"1": "./audio/01-opening.mp3", "2": "./audio/02-Setup.mp3", "3": "./audio/03-Opening night close eyes.mp3", "4": "./audio/04-Shades awaken.mp3", "5": "./audio/05-Shades close their eyes.mp3", "6": "./audio/06-Wake and begin council one.mp3", "7": "./audio/07-Discussion ends; captain proposes.mp3", "8": "./audio/08-Proposal time ends; players resolve the council.mp3", "9": "./audio/09-Council comments.mp3", "10": "./audio/10-Comments end; prepare the next council.mp3", "11": "./audio/11-Council two begins.mp3", "12": "./audio/12-Council three begins.mp3", "13": "./audio/13-Final council ends; final discussion begins.mp3", "14": "./audio/14-Final discussion ends; prepare to vote.mp3", "15": "./audio/15-Final voting countdown.mp3", "16": "./audio/16-Runoff discussion.mp3", "17": "./audio/17-Runoff time ends; vote again.mp3", "18": "./audio/18-Light victory.mp3", "19": "./audio/19-Shade victory.mp3", "20": "./audio/20-Optional extra minute.mp3", "21": "./audio/21-Optional play again.mp3"};
 const $=id=>document.getElementById(id);
 const clips={
 1:"Silence! Do you not see the light is fading? Quickly, choose your captain... but try not to choose the idiot.",
@@ -42,18 +43,18 @@ light:[18,"The light holds.","A Shade revealed. A woodland saved.","Play again"]
 shade:[19,"The shadows prevail.","Secrets kept. Suspicions misplaced.","Play again"],
 again:[21,"Another little mystery?","Reset your pieces and deal again.","Back to setup"]
 };
-let state=null,mode=localStorage.getItem("ll-mode")||"device",audio=new Audio(),generation=0,speaking=false,tickAt=Date.now(),db,urls=new Map(),wake;
+let state=null,mode=localStorage.getItem("ll-mode")==="silent"?"silent":"recorded",audio=new Audio(),generation=0,speaking=false,tickAt=Date.now(),db,urls=new Map(),wake;
 const saved=()=>{try{return JSON.parse(localStorage.getItem("ll-game"))}catch{return null}};
 function save(){if(state)localStorage.setItem("ll-game",JSON.stringify(state));}
 function teamText(n){return n+" players · "+(n-(n<7?1:2))+" Light · "+(n<7?1:2)+" Shade";}
 function data(){const p=[...phases[state.phase]];if(state.phase==="discussion"){p[0]=state.round===1?6:state.round===2?11:12;p[1]="Council "+state.round+" discussion";}return p}
-function stopAudio(){generation++;speaking=false;audio.pause();audio.onended=null;audio.onerror=null;if("speechSynthesis"in window)speechSynthesis.cancel();}
+function stopAudio(){generation++;speaking=false;audio.pause();audio.onended=null;audio.onerror=null;}
 async function narration(id,done){
 stopAudio();const gen=generation;const finish=()=>{if(gen!==generation)return;speaking=false;done?.();render();};
 if(mode==="silent"){finish();return}
-let src=urls.get(id)||(id===1?"./audio/01-opening.mp3":null);
+let src=urls.get(id)||bundledAudio[id];
 if(src){speaking=true;render();audio.src=src;audio.onended=finish;audio.onerror=()=>{if(gen===generation){$("status").textContent="Audio unavailable — follow the on-screen script.";finish();}};try{await audio.play()}catch{if(gen===generation){finish();$("status").textContent="Playback blocked — tap Replay, or follow the script.";}}}
-else if(mode==="device"&&"speechSynthesis"in window){speaking=true;render();const u=new SpeechSynthesisUtterance(clips[id]);u.lang="en-GB";u.rate=.93;u.onend=finish;u.onerror=finish;speechSynthesis.speak(u)}
+
 else{finish()}
 }
 function enter(phase){stopAudio();state.phase=phase;state.remaining=phases[phase][4]||0;state.paused=false;state.running=false;save();render();narration(data()[0],()=>{state.running=!!state.remaining;tickAt=Date.now();save()});}
@@ -74,7 +75,7 @@ $("chapter").textContent=["light","shade"].includes(state.phase)?"THE STORY ENDS
 $("rounds").innerHTML=[1,2,3].map(n=>'<span class="'+(n<=state.round?"active":"")+'"></span>').join("");
 $("title").textContent=title;$("hint").textContent=hint;$("words").textContent=clips[id];
 $("clock").hidden=!duration;$("clock").textContent=Math.floor(Math.ceil(state.remaining)/60)+":"+String(Math.ceil(state.remaining)%60).padStart(2,"0");
-$("status").textContent=speaking?"The lantern keeper is speaking…":state.paused?"Paused — take your time.":duration?"Timer running":mode==="recorded"&&!urls.has(id)&&id!==1?"Narration not recorded yet · follow the script":"Ready when you are.";
+$("status").textContent=speaking?"The lantern keeper is speaking…":state.paused?"Paused — take your time.":duration?"Timer running":mode==="recorded"&&!urls.has(id)&&!bundledAudio[id]?"Narration not recorded yet · follow the script":"Ready when you are.";
 $("next").hidden=!label;$("next").textContent=label||"Continue";$("next").disabled=false;
 $("pause").hidden=!duration&&!speaking;$("pause").textContent=state.paused?"Resume":"Pause";
 $("extend").hidden=!["discussion","final"].includes(state.phase);
@@ -104,6 +105,6 @@ req.onupgradeneeded=()=>req.result.createObjectStore("clips");
 req.onsuccess=()=>{db=req.result;const cursor=db.transaction("clips").objectStore("clips").openCursor();cursor.onsuccess=()=>{const c=cursor.result;if(c){urls.set(+c.key,URL.createObjectURL(c.value));c.continue()}$("importStatus").textContent=urls.size+" imported recording(s) available."}};
 req.onerror=()=>$("importStatus").textContent="Local recording storage unavailable in this browser.";
 $("import").onchange=async e=>{if(!db)return;let n=0;for(const f of e.target.files){const m=f.name.match(/^(\d{2})(?:[-_ .]|$)/);if(!m||+m[1]<1||+m[1]>21)continue;const id=+m[1];try{await new Promise((resolve,reject)=>{const t=db.transaction("clips","readwrite");t.objectStore("clips").put(f,id);t.oncomplete=resolve;t.onerror=reject});if(urls.has(id))URL.revokeObjectURL(urls.get(id));urls.set(id,URL.createObjectURL(f));n++}catch{$("importStatus").textContent="Could not store recording. Check device storage.";return}}$("importStatus").textContent=n+" imported. Name files 01-opening.mp3 through 21-play-again.mp3.";e.target.value=""};
-$("clearAudio").onclick=()=>{if(!db||!confirm("Remove all locally imported recordings?"))return;const t=db.transaction("clips","readwrite");t.objectStore("clips").clear();t.oncomplete=()=>{for(const u of urls.values())URL.revokeObjectURL(u);urls.clear();$("importStatus").textContent="Imported recordings removed. Original opening retained."}};
-if("serviceWorker"in navigator){navigator.serviceWorker.register("./sw.js").then(()=>navigator.serviceWorker.ready).then(()=>$("offline").textContent="Offline app ready. Imported audio is stored on this device; browser storage can be cleared by the OS.").catch(()=>$("offline").textContent="Offline installation unavailable here. You can still play online.")}
+$("clearAudio").onclick=()=>{if(!db||!confirm("Remove all locally imported recordings?"))return;const t=db.transaction("clips","readwrite");t.objectStore("clips").clear();t.oncomplete=()=>{for(const u of urls.values())URL.revokeObjectURL(u);urls.clear();$("importStatus").textContent="Imported recordings removed. All 21 bundled recordings retained."}};
+if("serviceWorker"in navigator){navigator.serviceWorker.register("./sw.js").then(()=>navigator.serviceWorker.ready).then(()=>$("offline").textContent="Offline app and all 21 recordings ready. Browser storage can be cleared by the OS.").catch(()=>$("offline").textContent="Offline installation unavailable here. You can still play online.")}
 render();
